@@ -1,0 +1,3 @@
+# RESNET MODELS
+Resnet models are residual learning frameworks introduced in \cite{}. ... More details ... 
+We test resnet 34, 50, and 101 provided in pytorch.
