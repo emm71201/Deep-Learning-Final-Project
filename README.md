@@ -9,5 +9,5 @@ We use the OSAIS MRI dataset, consisting of more than 80,000 brain MRI images cl
 into four stages of AD progression. The dataset’s volume and classification granularity make it great
 for training a deep neural network.
 
-![image info](./Figures/examples_images.png)
+![The San Juan Mountains are beautiful!](/Figures/examples_images.jpg "San Juan Mountains")
 
