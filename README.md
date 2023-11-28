@@ -7,7 +7,7 @@ The goal of the project is to diagnose *no dementia*, *very mild dementia*, *mil
 ## Dataset: 
 We use the OSAIS MRI dataset, consisting of more than 80,000 brain MRI images classified
 into four stages of AD progression. The dataset’s volume and classification granularity make it great
-for training a deep neural network.
+for training a deep neural network. The Figure below shows the first five images in each class.
 
-![The San Juan Mountains are beautiful!](/Figures/examples_images.jpg "San Juan Mountains")
+![Brain images!](/Figures/examples_images.jpg "Brain Images")
 
