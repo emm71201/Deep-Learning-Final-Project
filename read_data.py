@@ -40,8 +40,9 @@ grid = plt.GridSpec(nrows, ncols)
 for i in range(len(dementia)):
     row_title = dementia[i]
     create_subtitle(fig, grid[i, ::], row_title)
+plt.savefig("Figures/examples_images.jpg", bbox_inches='tight')
 plt.show()
-plt.savefig("Figures/examples_images.png", bbox_inches='tight')
+
 
 
 
