@@ -43,6 +43,36 @@ for i in range(len(dementia)):
 plt.savefig("Figures/examples_images.jpg", bbox_inches='tight')
 plt.show()
 
+# Exploring the dataset
+df = {}
+for folder in os.listdir(PATH):
+    tmp = []
+    for file in os.listdir(PATH + folder)[:]:
+        tmp.append(file)
+    df[folder] = tmp
+counts = []
+for key, item in df.items():
+    print(f"{key} : {len(item)}")
+    counts.append(len(item))
+
+fig, ax = plt.subplots()
+
+# fruits = ['apple', 'blueberry', 'cherry', 'orange']
+# counts = [40, 100, 30, 55]
+bar_labels = ['red', 'blue', '_red', 'orange']
+bar_colors = ['tab:red', 'tab:blue', 'tab:red', 'tab:orange']
+
+ax.bar(dementia, counts, color=bar_colors)
+
+ax.set_ylabel('Counts')
+#ax.set_title('Fruit supply by kind and color')
+#ax.legend(title='Fruit color')
+
+plt.show()
+
+
+
+
 
 
 
