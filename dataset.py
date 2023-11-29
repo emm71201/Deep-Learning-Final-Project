@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor
@@ -36,11 +37,9 @@ class ImageDataset(Dataset):
 
     def __init__(self, df, transform=None):
         """Arguments:
-            csv_file (string): Path to a csv file with annotations
-            root_dir (string): directory with all the images
+            df (Pandas dataframe): dataframe with path and label of each image
             transformation (callable, optional): Optional transform
         """
-        #self.annotations = pd.read_csv(csv_file)
         self.annotations = df
         self.transform = transform
     def __len__(self):
@@ -60,6 +59,12 @@ class ImageDataset(Dataset):
 
 df_images = process_images(PATH)
 data = ImageDataset(df_images)
-image, label = data[0]
-print(image)
+image, label = data[3]
+# print(image)
+
+#####################################################
+
+
+
+
 
