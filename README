@@ -1,1 +1,19 @@
 FINAL PROJECT
+
+## Dataset Download
+
+To download the dataset, you need to set up the Kaggle API:
+
+1. Create a Kaggle account or log in if you already have one.
+2. Go to your account settings and download your Kaggle API key (`kaggle.json`).
+3. Place the `kaggle.json` file in the `~/.kaggle` directory on your machine.
+
+After setting up the Kaggle API, run the following command to download the dataset:
+
+```bash
+python download_dataset.py
+
+
+### Note
+- The users need to have the Kaggle API installed (`pip install kaggle`).
+- Ensure the script and instructions are clear and easy to follow.
