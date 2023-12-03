@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import random
 
 
 PATH = "../oasis"
@@ -24,13 +25,18 @@ for folder in os.listdir(PATH):
 def process_images(PATH):
     """ return a dataframe with path to each image and their labels
     """
-    df = {"path":[], "class":[], "encoding":[]}
+    df = {"path":[], "class":[], "encoding":[], "split":[]}
     for folder in os.listdir(PATH):
         for file in os.listdir(os.path.join(PATH, folder)):
             complete_path = os.path.join(PATH, folder, file)
             df["path"].append(complete_path)
             df["class"].append(folder)
             df["encoding"].append(encoding[folder])
+
+            if np.random.uniform(0,1) < 0.2:
+                df["split"].append("test")
+            else:
+                df["split"].append("train")
 
     return pd.DataFrame(df)
 class ImageDataset(Dataset):
@@ -53,13 +59,15 @@ class ImageDataset(Dataset):
         image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         image = cv2.resize(image, (IMAGE_SIZE, IMAGE_SIZE))
         image = torch.FloatTensor(image)
+        image = image.unsqueeze(0)
         label = torch.from_numpy(np.array([int(item) for item in row["encoding"]]))
 
         return image, label
 
 df_images = process_images(PATH)
-data = ImageDataset(df_images)
-image, label = data[3]
+df_images = df_images.sample(frac=1)
+# data = ImageDataset(df_images)
+# image, label = data[3]
 # print(image)
 
 #####################################################
