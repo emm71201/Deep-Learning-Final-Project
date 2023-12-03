@@ -370,8 +370,8 @@ class Dataset(data.Dataset):
         image = torch.reshape(image, (CHANNELS, IMAGE_SIZE, IMAGE_SIZE))
 
         # Load tabular data  #https://rosenfelder.ai/multi-input-neural-network-pytorch/
-        #metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age','eTIV','nWBV', 'ASF']
-        metadata_features = ['eTIV','nWBV', 'ASF']
+        metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age','eTIV','nWBV', 'ASF']
+        #metadata_features = ['eTIV','nWBV', 'ASF']
 
         if self.type_data == 'train':
             tabular = xdf_dset[metadata_features].iloc[ID].to_numpy().astype(float)

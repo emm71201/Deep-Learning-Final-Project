@@ -21,17 +21,12 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import glob
+import subprocess
+try:
+    from g_mlp_pytorch import gMLPVision
+except:
+    subprocess.run(['pip', 'install', 'g-mlp-pytorch'])
 
-'''
-LAST UPDATED 11/10/2021, lsdr
-'''
-
-## Process images in parallel
-
-## folder "Data" images
-## folder "excel" excel file , whatever is there is the file
-## get the classes from the excel file
-## folder "Documents" readme file
 
 SEED = 123
 torch.manual_seed(SEED)
@@ -346,6 +341,25 @@ class ResNet50_w_metadata(nn.Module):
 
         return self.linear6(tab)
 
+class GMLP(nn.Module):
+    def __init__(self):
+        super(GMLP, self).__init__()
+
+        PATCH_SIZE = 16
+
+        self.model = gMLPVision(
+            image_size = IMAGE_SIZE,
+            patch_size = PATCH_SIZE,
+            num_classes = OUTPUTS_a,
+            dim = 512,
+            depth = 6)
+
+        self.model.to_patch_embed[1] = nn.Linear(PATCH_SIZE*PATCH_SIZE*CHANNELS, 512, bias=True)
+        
+    def forward(self, x, tab):
+        x = self.model(x)
+        
+        return x
 
 class Dataset(data.Dataset):
     '''
@@ -478,7 +492,8 @@ def model_definition():
     # Compile the model
 
     #model = ResNet50_w_metadata()
-    model = AttentionCNN(num_classes=4)
+    #model = AttentionCNN(num_classes=4)
+    model = GMLP()
     #model = MLP()
 
     model = model.to(device)
@@ -852,5 +867,5 @@ if __name__ == '__main__':
 
     train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on='f1_macro')
 
-    
+    # ADD TEST SET SCRIPT HERE
 
