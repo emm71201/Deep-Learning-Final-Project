@@ -28,4 +28,4 @@ metadata_df = pd.read_csv(metadata_path + "oasis_cross-sectional.csv")
 combined = image_df.merge(metadata_df,left_on='patient', right_on='ID')
 combined.fillna("0",inplace=True)
 
-combined.to_csv('train_test.csv',index=False)
+combined.to_csv('data.csv',index=False)

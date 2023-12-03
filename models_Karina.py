@@ -49,6 +49,179 @@ device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 SAVE_MODEL = True
         
 #---- Define the model ---- #
+    
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class ChannelAttention(nn.Module):
+    def __init__(self, in_planes, ratio=16):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        
+        self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        #print("Input size:", x.size())
+        avg_pooled = self.avg_pool(x)
+        max_pooled = self.max_pool(x)
+        #print("Avg pooled size:", avg_pooled.size())
+        #print("Max pooled size:", max_pooled.size())
+        
+        avg_out = self.fc2(self.relu1(self.fc1(avg_pooled)))
+        max_out = self.fc2(self.relu1(self.fc1(max_pooled)))
+        out = avg_out + max_out
+        
+        scale = self.sigmoid(out)  # Sigmoid activation
+        return x * scale.expand_as(x)  # Scale the input
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
+
+        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        #print("Input size:", x.size())
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        #print("Avg out size:", avg_out.size())
+        #print("Max out size:", max_out.size())
+        x_cat = torch.cat([avg_out, max_out], dim=1)
+        x_out = self.conv1(x_cat)
+        scale = self.sigmoid(x_out)  # Sigmoid activation
+        return x * scale  # Scale the input
+
+
+class CBAM(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16):
+        super(CBAM, self).__init__()
+        self.ChannelGate = ChannelAttention(gate_channels, reduction_ratio)
+        self.SpatialGate = SpatialAttention()
+
+    def forward(self, x):
+        # Apply Channel Attention
+        channel_attention_map = self.ChannelGate(x)
+        x = x * channel_attention_map.expand_as(x)
+        
+        # Apply Spatial Attention
+        spatial_attention_map = self.SpatialGate(x)
+        # The spatial attention map is 1xHxW, and needs to be broadcasted across the channel dimension
+        # You should not multiply x by x_out again, as it has already been modified by the channel attention
+        x = x * spatial_attention_map.expand_as(x)
+    
+        return x
+
+    
+class CBAMBottleneck(nn.Module):
+    def __init__(self, in_planes, out_planes, stride=1, downsample=None):
+        super(CBAMBottleneck, self).__init__()
+        # Assuming 'out_planes' is 4 times 'in_planes' for a bottleneck
+        self.conv1 = nn.Conv2d(in_planes, in_planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.conv2 = nn.Conv2d(in_planes, in_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(in_planes)
+        self.conv3 = nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.cbam = CBAM(out_planes)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+        
+        out = self.cbam(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+    
+class AttentionCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(AttentionCNN, self).__init__()
+        # Assume the input image size is 128x128
+        self.conv1 = nn.Conv2d(CHANNELS, 16, kernel_size=3, padding=1) # Output size: 128x128
+        self.bn1 = nn.BatchNorm2d(16)
+        self.pool = nn.MaxPool2d(2, 2) # Output size: 64x64
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1) # Output size: 64x64
+        self.bn2 = nn.BatchNorm2d(32)
+        # Maybe only one pooling layer is needed, so we'll comment out the next pooling line.
+        # self.pool = nn.MaxPool2d(2, 2) # Commented out to prevent over-reduction
+        self.cbam = CBAM(32) # Attention mechanism
+
+        # Calculate the correct total number of features after the conv and pool layers
+        # For example, if after the pooling layer you have a 32x32 feature map with 32 channels:
+        # self.fc1 = nn.Linear(32 * 32 * 32, 120)
+        # You will need to calculate the correct size here based on your actual output.
+        
+        # Finally, define the fully connected layers
+        self.fc1 = nn.Linear(100352, 5000) # Adjust this size accordingly
+        #self.fc2 = nn.Linear(120, 84)
+        #self.fc3 = nn.Linear(84, num_classes)
+
+        self.act = torch.relu
+
+        self.linear2 = nn.Linear(5007,1000)
+        self.linear3 = nn.Linear(1000,256)
+        self.linear4 = nn.Linear(256,128)
+        self.linear5 = nn.Linear(128,64)
+        self.linear6 = nn.Linear(64,OUTPUTS_a)
+
+    def forward(self, x, tab):
+        x = F.relu(self.bn1(self.conv1(x)))
+        #print("Size after conv1 and relu:", x.size())
+        x = self.pool(x)
+       # print("Size after pool1:", x.size())
+        x = F.relu(self.bn2(self.conv2(x)))
+        #print("Size after conv2 and relu:", x.size())
+        x = self.pool(x)
+        #print("Size after pool2:", x.size())
+        x = self.cbam(x)
+        #print("Size after CBAM:", x.size())
+        x = x.view(x.size(0), -1)
+        #print("Size before fc1:", x.size()) #[32, 100352]
+        x = F.relu(self.fc1(x))
+        #x = F.relu(self.fc2(x))
+        #x = self.fc3(x)
+        
+        tab = torch.cat((x,tab), dim=1)
+
+        tab = self.act(tab)
+        tab = self.linear2(tab)
+        tab = self.act(tab)
+        tab = self.linear3(tab)
+        tab = self.act(tab)
+        tab = self.linear4(tab)
+        tab = self.act(tab)
+        tab = self.linear5(tab)
+        tab = self.act(tab)
+
+        return self.linear6(tab)
+    
+
 
 class CNN(nn.Module):
     def __init__(self):
@@ -573,7 +746,7 @@ def plt_confusion_matrix(targets, preds):
 
 if __name__ == '__main__':
 
-    FILE_NAME = 'train_test.csv'
+    FILE_NAME = 'data.csv'
     
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME, dtype=str)
