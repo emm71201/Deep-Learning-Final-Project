@@ -77,7 +77,7 @@ def download_metadata():
     subprocess.run(['wget', 'https://oasis-brains.org/files/oasis_cross-sectional.csv'])
 
     # Return to original folder
-    os.chdir(path)
+    os.chdir(OR_PATH)
 
     print("Download completed and metadata files extracted to the metadata/ directory")
 
@@ -437,14 +437,7 @@ class Dataset(data.Dataset):
 
 
 def read_data(train_test_split):
-    ## Only the training set
-    ## xdf_dset ( data set )
     ## read the data data from the file
-
-
-    #ds_inputs = np.array(xdf_dset['id'])
-
-    #ds_targets = xdf_dset['target_class']
 
     # ---------------------- Parameters for the data loader --------------------------------
 
@@ -462,29 +455,30 @@ def read_data(train_test_split):
 
     # Data Loaders
 
-    params = {'batch_size': BATCH_SIZE,
+    if train_test_split == 'train':
+
+        params = {'batch_size': BATCH_SIZE,
               'shuffle': True}
 
-    training_set = Dataset(partition['train'], 'train')
-    training_generator = data.DataLoader(training_set, **params)
+        training_set = Dataset(partition['train'], 'train')
+        training_generator = data.DataLoader(training_set, **params)
 
-    params = {'batch_size': BATCH_SIZE,
+        params = {'batch_size': BATCH_SIZE,
               'shuffle': False}
 
-    val_set = Dataset(partition['validation'], 'validation')
-    val_generator = data.DataLoader(val_set, **params)
+        val_set = Dataset(partition['validation'], 'validation')
+        val_generator = data.DataLoader(val_set, **params)
 
-    params = {'batch_size': BATCH_SIZE,
-              'shuffle': False}
-
-    test_set = Dataset(partition['test'], 'test')
-    test_generator = data.DataLoader(test_set, **params)
-
-    ## Make the channel as a list to make it variable
-
-    if train_test_split == 'train':
         return training_generator, val_generator
+
     elif train_test_split == 'test':
+
+        params = {'batch_size': BATCH_SIZE,
+              'shuffle': False}
+
+        test_set = Dataset(partition['test'], 'test')
+        test_generator = data.DataLoader(test_set, **params) 
+    
         return test_generator
 
 def model_definition():
@@ -662,7 +656,7 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
         if met_val > met_val_best and SAVE_MODEL:
         #if SAVE_MODEL:
 
-            torch.save(model.state_dict(), "model.pt")
+            torch.save(model.state_dict(), "best_model.pt")
             #xdf_dset_results = xdf_dset_val.copy()
 
             ## The following code creates a string to be saved as 1,2,3,3,
@@ -679,7 +673,77 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
             met_val_best = met_val
 
     
+def test_model(test_ds, list_of_metrics, list_of_agg):
+        
+    model, optimizer, criterion, scheduler = model_definition()
 
+    model.load_state_dict(torch.load('best_model.pt', map_location=device))
+
+    cont = 0
+    test_loss_item = list([])
+    pred_labels_per_hist = list([])
+    test_hist = list([])
+
+    ## Testing the model
+
+    model.eval()
+
+    pred_logits, real_labels = np.zeros((1, OUTPUTS_a)), np.zeros((1, OUTPUTS_a))
+
+    test_loss, steps_test = 0, 0
+
+    with torch.no_grad():
+
+        with tqdm(total=len(test_ds)) as pbar:
+
+            for xdata,xtabular,xtarget in test_ds:
+
+                xdata, xtabular, xtarget = xdata.to(device), xtabular.to(device), xtarget.to(device)
+
+                optimizer.zero_grad()
+
+                output = model(xdata, xtabular)
+
+                loss = criterion(output, xtarget)
+
+                test_loss += loss.item()
+                cont += 1
+
+                steps_test += 1
+
+                test_loss_item.append(loss.item())
+
+                pred_labels_per = output.detach().to(torch.device('cpu')).numpy()
+
+                if len(pred_labels_per_hist) == 0:
+                    pred_labels_per_hist = pred_labels_per
+                else:
+                    pred_labels_per_hist = np.vstack([pred_labels_per_hist, pred_labels_per])
+
+                if len(test_hist) == 0:
+                    test_hist = xtarget.cpu().numpy()
+                else:
+                    test_hist = np.vstack([test_hist, xtarget.cpu().numpy()])
+
+                pbar.update(1)
+                pbar.set_postfix_str("Test Loss: {:.5f}".format(test_loss / steps_test))
+
+                pred_logits = np.vstack((pred_logits, output.detach().cpu().numpy()))
+                real_labels = np.vstack((real_labels, xtarget.cpu().numpy()))
+        
+
+        pred_labels = pred_logits[1:]
+        pred_labels = [np.argmax(a) for a in pred_labels]
+        real_labels = real_labels[1:]
+        real_labels = [np.argmax(a) for a in real_labels]
+
+        test_metrics = metrics_func(list_of_metrics, list_of_agg, real_labels, pred_labels)
+
+        for met, dat in test_metrics.items():
+            print ('Test:' +met+ ' {:.5f}'.format(dat))
+
+
+    plt_confusion_matrix(real_labels, pred_labels)
 
 def metrics_func(metrics, aggregates, y_true, y_pred):
     '''
@@ -865,7 +929,10 @@ if __name__ == '__main__':
     list_of_metrics = ['f1_macro','acc','coh']
     list_of_agg = []
 
+    # Train model and test validation split
     train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on='f1_macro')
 
-    # ADD TEST SET SCRIPT HERE
+    test_ds = read_data('test')
 
+    # Test on test split
+    test_model(test_ds,list_of_metrics, list_of_agg)
