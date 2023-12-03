@@ -1,7 +1,7 @@
 # This is a sample Python script.
 import random
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
 import cv2
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, hamming_loss, cohen_kappa_score, matthews_corrcoef
@@ -16,6 +16,9 @@ import os
 from torchvision.transforms import v2
 from torchvision.io import read_image
 from torchvision.models import resnet50, ResNet50_Weights, DenseNet161_Weights, VGG16_BN_Weights, VGG19_BN_Weights, ResNet101_Weights, ResNet18_Weights
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 '''
 LAST UPDATED 11/10/2021, lsdr
@@ -35,7 +38,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 n_epoch = 10
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 LR =  0.001
 
 ## Image processing
@@ -43,7 +46,7 @@ CHANNELS = 1
 IMAGE_SIZE = 224
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-SAVE_MODEL = False
+SAVE_MODEL = True
         
 #---- Define the model ---- #
 
@@ -58,14 +61,14 @@ class CNN(nn.Module):
         self.conv2 = nn.Conv2d(16, 128, (3, 3))
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        self.linear = nn.Linear(128, 5)
+        self.linear = nn.Linear(128, 4)
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(7,10)
-        self.linear3 = nn.Linear(10,10)
-        self.linear4 = nn.Linear(10,5)
+        self.linear2 = nn.Linear(7,32)
+        self.linear3 = nn.Linear(32,16)
+        self.linear4 = nn.Linear(16,4)
 
-        self.linear5 = nn.Linear(10,OUTPUTS_a)
+        self.linear5 = nn.Linear(8,OUTPUTS_a)
 
     def forward(self, x, tab): # add tabular data here
         x = self.pad1(self.convnorm1(self.act(self.conv1(x))))
@@ -83,6 +86,45 @@ class CNN(nn.Module):
         x = self.act(x)
 
         return self.linear5(x)
+    
+
+class ResNet50_w_metadata(nn.Module):
+    def __init__(self):
+        super(ResNet50, self).__init__()
+        model = models.resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.input = nn.Conv2d(CHANNELS, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        self.features = nn.Sequential(*list(model.children())[1:-1])
+        self.classifier = nn.Linear(model.fc.in_features, OUTPUTS_a)
+
+        self.act = torch.relu
+
+        self.linear2 = nn.Linear(2055,1000)
+        self.linear3 = nn.Linear(1000,256)
+        self.linear4 = nn.Linear(256,128)
+        self.linear5 = nn.Linear(128,64)
+        self.linear6 = nn.Linear(64,OUTPUTS_a)
+
+    def forward(self, x, tab):
+        x = self.input(x)
+        x = self.features(x)
+        x = torch.flatten(x, 1)
+        #x = self.classifier(x)
+
+        tab = torch.cat((x,tab), dim=1)
+
+        tab = self.act(tab)
+        tab = self.linear2(tab)
+        tab = self.act(tab)
+        tab = self.linear3(tab)
+        tab = self.act(tab)
+        tab = self.linear4(tab)
+        tab = self.act(tab)
+        tab = self.linear5(tab)
+        tab = self.act(tab)
+
+        return self.linear6(tab)
+        #return x
+
 
 class Dataset(data.Dataset):
     '''
@@ -181,16 +223,18 @@ def read_data():
 
     return training_generator, test_generator
 
-def save_model(model):
+#def save_model(model):
     # Open the file
 
-    print(model, file=open('summary_{}.txt'.format(NICKNAME), "w"))
+    #print(model, file=open('summary_{}.txt'.format(NICKNAME), "w"))
 
 def model_definition():
     # Define a Keras sequential model
     # Compile the model
 
-    model = CNN()
+    #model = CNN()
+    #model = ResNet50_w_metadata()
+    model = AttentionCNN(num_classes=4)
 
     model = model.to(device)
 
@@ -357,10 +401,12 @@ def train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on):
 
         print(xstrres)
 
-        if met_test < met_test_best and SAVE_MODEL:
+        plt_confusion_matrix(real_labels, pred_labels)
+
+        if met_test > met_test_best and SAVE_MODEL:
         #if SAVE_MODEL:
 
-            torch.save(model.state_dict(), "model_{}.pt".format(NICKNAME))
+            torch.save(model.state_dict(), "model.pt")
             xdf_dset_results = xdf_dset_test.copy()
 
             ## The following code creates a string to be saved as 1,2,3,3,
@@ -372,9 +418,11 @@ def train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on):
 
             xdf_dset_results['results'] = xfinal_pred_labels
 
-            xdf_dset_results.to_excel('{}_results_{}.xlsx'.format(CLASS,NICKNAME), index = False)
+            xdf_dset_results.to_csv('model_results.csv', index = False)
             print("The model has been saved!")
             met_test_best = met_test
+
+    
 
 
 def metrics_func(metrics, aggregates, y_true, y_pred):
@@ -474,15 +522,9 @@ def process_target():
 
     return class_names
 
+def preprocess_data(data):
 
-if __name__ == '__main__':
-
-    FILE_NAME = 'train_test.csv'
-    
-    # Reading and filtering Excel file
-    xdf_data_og = pd.read_csv(FILE_NAME, dtype=str)
-    
-    df = xdf_data_og[['id','target','M/F','Age','eTIV','nWBV','ASF']]
+    df = data[['id','target','M/F','Age','eTIV','nWBV','ASF']]
     convert_dict = {'id': str,
                 'target': float,
                 'M/F': 'category',
@@ -494,7 +536,49 @@ if __name__ == '__main__':
  
     df = df.astype(convert_dict) 
     enc = OneHotEncoder() 
-    xdf_data = df.join(pd.DataFrame(enc.fit_transform(df[['M/F']]).toarray())).drop(columns=('M/F'))
+    new_df = df.join(pd.DataFrame(enc.fit_transform(df[['M/F']]).toarray())).drop(columns=('M/F'))
+    
+    return new_df
+
+def transform_data(train_ds, val_ds, test_ds):
+
+    float_cols = ['Age','eTIV','nWBV','ASF']
+
+    # The Scaler
+    ss = MinMaxScaler()
+
+    # Standardize the training data
+    train_ds_ss = ss.fit_transform(train_ds[float_cols])
+    train_ds_ss = train_ds.drop(columns=float_cols).join(pd.DataFrame(train_ds_ss, columns=float_cols))
+
+    # Standardize the validation data
+    val_ds_ss = ss.transform(val_ds[float_cols])
+    val_ds_ss = val_ds.drop(columns=float_cols).join(pd.DataFrame(val_ds_ss, columns=float_cols))
+
+    # Standardize the test data
+    test_ds_ss = ss.transform(test_ds[float_cols])
+    test_ds_ss = test_ds.drop(columns=float_cols).join(pd.DataFrame(test_ds_ss, columns=float_cols))
+
+    return train_ds_ss, val_ds_ss, test_ds_ss
+
+def plt_confusion_matrix(targets, preds):
+
+    cm = confusion_matrix(targets, preds)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+
+    return plt.show()
+
+if __name__ == '__main__':
+
+    FILE_NAME = 'train_test.csv'
+    
+    # Reading and filtering Excel file
+    xdf_data_og = pd.read_csv(FILE_NAME, dtype=str)
+
+    xdf_data = preprocess_data(xdf_data_og)
 
     ## Process Classes    
     class_names = process_target()
@@ -504,6 +588,8 @@ if __name__ == '__main__':
     xdf_dset, xdf_dset_val = train_test_split(xdf_data, test_size=0.30, random_state=SEED)
 
     xdf_dset_val, xdf_dset_test = train_test_split(xdf_data, test_size=0.50, random_state=SEED)
+
+    #xdf_dset, xdf_dset_val, xdf_dset_test = transform_data(xdf_dset, xdf_dset_val, xdf_dset_test)
     
     ## read_data creates the dataloaders
 
@@ -515,3 +601,6 @@ if __name__ == '__main__':
     list_of_agg = []
 
     train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on='f1_macro')
+
+    
+
