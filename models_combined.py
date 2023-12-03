@@ -43,7 +43,7 @@ CHANNELS = 1
 IMAGE_SIZE = 224
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-SAVE_MODEL = False
+SAVE_MODEL = True
 
 def download_dataset():
     # Ensure the .kaggle directory exists
@@ -119,7 +119,7 @@ class MLP(nn.Module):
 
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(metadata_len,256)
+        self.linear2 = nn.Linear(14,256)
         self.linear3 = nn.Linear(256,256)
         self.linear4 = nn.Linear(256,128)
         self.linear5 = nn.Linear(128,64)
@@ -262,13 +262,13 @@ class AttentionCNN(nn.Module):
         # You will need to calculate the correct size here based on your actual output.
         
         # Finally, define the fully connected layers
-        self.fc1 = nn.Linear(100352, 5000) # Adjust this size accordingly
+        self.fc1 = nn.Linear(100352, 5000)
         #self.fc2 = nn.Linear(120, 84)
         #self.fc3 = nn.Linear(84, num_classes)
 
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(5000+metadata_len,1000)
+        self.linear2 = nn.Linear(5014,1000) #input = 5000 + len(metadata)
         self.linear3 = nn.Linear(1000,256)
         self.linear4 = nn.Linear(256,128)
         self.linear5 = nn.Linear(128,64)
@@ -308,14 +308,15 @@ class AttentionCNN(nn.Module):
 class ResNet50_w_metadata(nn.Module):
     def __init__(self):
         super(ResNet50_w_metadata, self).__init__()
+
         model = models.resnet50(weights=ResNet50_Weights.DEFAULT)
         self.input = nn.Conv2d(CHANNELS, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.features = nn.Sequential(*list(model.children())[1:-1])
         self.classifier = nn.Linear(model.fc.in_features, OUTPUTS_a)
 
         self.act = torch.relu
-
-        self.linear2 = nn.Linear(2048+metadata_len,1000)
+        
+        self.linear2 = nn.Linear(2062,1000) # Input shape = 2048 + metadata len
         self.linear3 = nn.Linear(1000,256)
         self.linear4 = nn.Linear(256,128)
         self.linear5 = nn.Linear(128,64)
@@ -416,10 +417,10 @@ class Dataset(data.Dataset):
         # Load tabular data  #https://rosenfelder.ai/multi-input-neural-network-pytorch/
         #metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age','eTIV','nWBV', 'ASF']
         #metadata_features = ['eTIV','nWBV', 'ASF']
+        
+        # Demographic features only
         metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age']
         
-        global metadata_len
-        metadata_len = len(metadata_features)
 
         if self.type_data == 'train':
             tabular = xdf_dset[metadata_features].iloc[ID].to_numpy().astype(float)
@@ -486,8 +487,8 @@ def model_definition():
     # Compile the model
 
     #model = ResNet50_w_metadata()
-    #model = AttentionCNN(num_classes=4)
-    model = GMLP()
+    model = AttentionCNN(num_classes=4)
+    #model = GMLP()
     #model = MLP()
 
     model = model.to(device)
@@ -894,8 +895,6 @@ def plt_confusion_matrix(targets, preds):
     return plt.show()
 
 if __name__ == '__main__':
-
-    global metadata_len
 
     # Set up environment
     #download_dataset()
