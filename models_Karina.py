@@ -46,13 +46,38 @@ CHANNELS = 1
 IMAGE_SIZE = 224
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-SAVE_MODEL = True
+SAVE_MODEL = False
         
 #---- Define the model ---- #
     
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+class MLP(nn.Module):
+    def __init__(self):
+        super(MLP, self).__init__()
+
+        self.act = torch.relu
+
+        self.linear2 = nn.Linear(3,256)
+        self.linear3 = nn.Linear(256,256)
+        self.linear4 = nn.Linear(256,128)
+        self.linear5 = nn.Linear(128,64)
+        self.linear6 = nn.Linear(64,OUTPUTS_a)
+
+    def forward(self, x, tab):
+
+        tab = self.linear2(tab)
+        tab = self.act(tab)
+        tab = self.linear3(tab)
+        tab = self.act(tab)
+        tab = self.linear4(tab)
+        tab = self.act(tab)
+        tab = self.linear5(tab)
+        tab = self.act(tab)
+
+        return self.linear6(tab)
 
 
 class ChannelAttention(nn.Module):
@@ -184,7 +209,7 @@ class AttentionCNN(nn.Module):
 
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(5007,1000)
+        self.linear2 = nn.Linear(5017,1000)
         self.linear3 = nn.Linear(1000,256)
         self.linear4 = nn.Linear(256,128)
         self.linear5 = nn.Linear(128,64)
@@ -237,13 +262,13 @@ class CNN(nn.Module):
         self.linear = nn.Linear(128, 4)
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(7,32)
+        self.linear2 = nn.Linear(17,32)
         self.linear3 = nn.Linear(32,16)
         self.linear4 = nn.Linear(16,4)
 
         self.linear5 = nn.Linear(8,OUTPUTS_a)
 
-    def forward(self, x, tab): # add tabular data here
+    def forward(self, x, tab): 
         x = self.pad1(self.convnorm1(self.act(self.conv1(x))))
         x = self.act(self.conv2(self.act(x)))
         x = self.linear(self.global_avg_pool(x).view(-1, 128))
@@ -263,7 +288,7 @@ class CNN(nn.Module):
 
 class ResNet50_w_metadata(nn.Module):
     def __init__(self):
-        super(ResNet50, self).__init__()
+        super(ResNet50_w_metadata, self).__init__()
         model = models.resnet50(weights=ResNet50_Weights.DEFAULT)
         self.input = nn.Conv2d(CHANNELS, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.features = nn.Sequential(*list(model.children())[1:-1])
@@ -271,7 +296,7 @@ class ResNet50_w_metadata(nn.Module):
 
         self.act = torch.relu
 
-        self.linear2 = nn.Linear(2055,1000)
+        self.linear2 = nn.Linear(2065,1000)
         self.linear3 = nn.Linear(1000,256)
         self.linear4 = nn.Linear(256,128)
         self.linear5 = nn.Linear(128,64)
@@ -296,7 +321,6 @@ class ResNet50_w_metadata(nn.Module):
         tab = self.act(tab)
 
         return self.linear6(tab)
-        #return x
 
 
 class Dataset(data.Dataset):
@@ -346,11 +370,15 @@ class Dataset(data.Dataset):
         image = torch.reshape(image, (CHANNELS, IMAGE_SIZE, IMAGE_SIZE))
 
         # Load tabular data  #https://rosenfelder.ai/multi-input-neural-network-pytorch/
+        #metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age','eTIV','nWBV', 'ASF']
+        metadata_features = ['eTIV','nWBV', 'ASF']
+
         if self.type_data == 'train':
-            tabular = xdf_dset.iloc[0,2:].to_numpy().astype(float)
+            tabular = xdf_dset[metadata_features].iloc[ID].to_numpy().astype(float)
             tabular = torch.FloatTensor(tabular)
+
         else:
-            tabular = xdf_dset.iloc[0,2:].to_numpy().astype(float)
+            tabular = xdf_dset_test[metadata_features].iloc[ID].to_numpy().astype(float)
             tabular = torch.FloatTensor(tabular)
          
         return image, tabular, y 
@@ -407,7 +435,8 @@ def model_definition():
 
     #model = CNN()
     #model = ResNet50_w_metadata()
-    model = AttentionCNN(num_classes=4)
+    #model = AttentionCNN(num_classes=4)
+    model = MLP()
 
     model = model.to(device)
 
@@ -580,18 +609,18 @@ def train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on):
         #if SAVE_MODEL:
 
             torch.save(model.state_dict(), "model.pt")
-            xdf_dset_results = xdf_dset_test.copy()
+            #xdf_dset_results = xdf_dset_test.copy()
 
             ## The following code creates a string to be saved as 1,2,3,3,
             ## This code will be used to validate the model
-            xfinal_pred_labels = []
-            for i in range(len(pred_labels)):
-                joined_string = ",".join(str(int(e)) for e in pred_labels[i])
-                xfinal_pred_labels.append(joined_string)
+            #xfinal_pred_labels = []
+            #for i in range(len(pred_labels)):
+            #    joined_string = ",".join(str(int(e)) for e in pred_labels[i])
+            #    xfinal_pred_labels.append(joined_string)
 
-            xdf_dset_results['results'] = xfinal_pred_labels
+            #xdf_dset_results['results'] = xfinal_pred_labels
 
-            xdf_dset_results.to_csv('model_results.csv', index = False)
+            #xdf_dset_results.to_csv('model_results.csv', index = False)
             print("The model has been saved!")
             met_test_best = met_test
 
@@ -697,23 +726,25 @@ def process_target():
 
 def preprocess_data(data):
 
-    df = data[['id','target','M/F','Age','eTIV','nWBV','ASF']]
-    convert_dict = {'id': str,
-                'target': float,
-                'M/F': 'category',
-                'Age': float,
-                'eTIV': float,
-                'nWBV': float,
-                'ASF': float
-                }
+    df = data[['id','target','M/F','Age','Educ','SES','eTIV','nWBV','ASF']]
+
+    convert_dict = {'M/F': 'category',
+                    'Educ': 'category',
+                    'SES': 'category'}
  
     df = df.astype(convert_dict) 
+    df = df[df['Age']>=60].reset_index(drop=True) # Restrict age to 60 and older
+
     enc = OneHotEncoder() 
-    new_df = df.join(pd.DataFrame(enc.fit_transform(df[['M/F']]).toarray())).drop(columns=('M/F'))
+    df1 = df.join(pd.DataFrame(enc.fit_transform(df[['M/F']]).toarray(),columns=('M','F'))).drop(columns=('M/F'))
+    df2 = df1.join(pd.DataFrame(enc.fit_transform(df[['Educ']]).toarray(),columns=('Educ1','Educ2','Educ3','Educ4','Educ5'))).drop(columns=('Educ'))
+    df3 = df2.join(pd.DataFrame(enc.fit_transform(df[['SES']]).toarray(),columns=('SES0','SES1','SES2','SES3','SES4','SES5'))).drop(columns=('SES'))
     
-    return new_df
+    return df3
 
 def transform_data(train_ds, val_ds, test_ds):
+
+    train_ds, val_ds, test_ds = train_ds.reset_index(drop=True), val_ds.reset_index(drop=True), test_ds.reset_index(drop=True)
 
     float_cols = ['Age','eTIV','nWBV','ASF']
 
@@ -749,7 +780,7 @@ if __name__ == '__main__':
     FILE_NAME = 'data.csv'
     
     # Reading and filtering Excel file
-    xdf_data_og = pd.read_csv(FILE_NAME, dtype=str)
+    xdf_data_og = pd.read_csv(FILE_NAME)
 
     xdf_data = preprocess_data(xdf_data_og)
 
@@ -762,7 +793,7 @@ if __name__ == '__main__':
 
     xdf_dset_val, xdf_dset_test = train_test_split(xdf_data, test_size=0.50, random_state=SEED)
 
-    #xdf_dset, xdf_dset_val, xdf_dset_test = transform_data(xdf_dset, xdf_dset_val, xdf_dset_test)
+    xdf_dset, xdf_dset_val, xdf_dset_test = transform_data(xdf_dset, xdf_dset_val, xdf_dset_test)
     
     ## read_data creates the dataloaders
 

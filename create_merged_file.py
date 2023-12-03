@@ -29,3 +29,7 @@ combined = image_df.merge(metadata_df,left_on='patient', right_on='ID')
 combined.fillna("0",inplace=True)
 
 combined.to_csv('data.csv',index=False)
+
+patient_target_only = combined[['patient','target']].drop_duplicates()
+
+patient_target_only.to_csv('patient_target_only.csv',index=False)
