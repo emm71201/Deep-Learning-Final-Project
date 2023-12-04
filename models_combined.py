@@ -1,4 +1,4 @@
-# This is a sample Python script.
+
 import random
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
@@ -27,14 +27,13 @@ try:
 except:
     subprocess.run(['pip', 'install', 'g-mlp-pytorch'])
 
-
 SEED = 123
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-n_epoch = 10
+n_epoch = 2
 BATCH_SIZE = 32
 LR =  0.001
 
@@ -112,6 +111,32 @@ def make_data_file():
 
     combined.to_csv('data.csv',index=False)
 
+class FocalLoss(nn.Module):
+    def __init__(self, weight=None, alpha=0.25, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.weight = weight
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        # Ensure that targets and inputs are on the same device
+        if inputs.device != targets.device:
+            targets = targets.to(inputs.device)
+            
+        # Convert targets to one-hot encoding
+        #targets_one_hot = torch.eye(inputs.size(-1), device=inputs.device)[targets]
+
+        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none', weight=self.weight)
+        pt = torch.exp(-BCE_loss)  # prevents nans when probability 0
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+
+        if self.reduction == 'mean':
+            return torch.mean(F_loss)
+        elif self.reduction == 'sum':
+            return torch.sum(F_loss)
+        else:
+            return F_loss
 
 class MLP(nn.Module):
     def __init__(self):
@@ -242,12 +267,12 @@ class CBAMBottleneck(nn.Module):
         out = self.relu(out)
 
         return out
-    
+
 class AttentionCNN(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self):
         super(AttentionCNN, self).__init__()
         # Assume the input image size is 128x128
-        self.conv1 = nn.Conv2d(CHANNELS, 16, kernel_size=3, padding=1) # Output size: 128x128
+        self.conv1 = nn.Conv2d(CHANNELS, 16, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(16)
         self.pool = nn.MaxPool2d(2, 2) # Output size: 64x64
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1) # Output size: 64x64
@@ -262,48 +287,40 @@ class AttentionCNN(nn.Module):
         # You will need to calculate the correct size here based on your actual output.
         
         # Finally, define the fully connected layers
-        self.fc1 = nn.Linear(100352, 5000)
-        #self.fc2 = nn.Linear(120, 84)
-        #self.fc3 = nn.Linear(84, num_classes)
+        self.fc1 = nn.Linear(100352, 120) # Adjust this size accordingly
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, OUTPUTS_a)
 
-        self.act = torch.relu
+    def forward(self, x, tab, register_hook=False):
+        x = F.relu(self.bn1(self.conv1(x))) # First convolutional layer
+        x = self.pool(x) # First pooling layer
+    
+        # Save the feature maps and register a hook for the gradients
+        self.features = x
+        if register_hook:
+            self.features.requires_grad_()
+            self.features.register_hook(self.save_gradients)
+    
+        x = F.relu(self.bn2(self.conv2(self.features))) # Apply conv2 here
+    
+        x = self.pool(x) # Second pooling layer
+        x = self.cbam(x) # CBAM layer
+    
+        x = x.view(x.size(0), -1) # Flatten
+        x = F.relu(self.fc1(x)) # Fully connected layers
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
-        self.linear2 = nn.Linear(5014,1000) #input = 5000 + len(metadata)
-        self.linear3 = nn.Linear(1000,256)
-        self.linear4 = nn.Linear(256,128)
-        self.linear5 = nn.Linear(128,64)
-        self.linear6 = nn.Linear(64,OUTPUTS_a)
+    def save_gradients(self, grad):
+        self.gradients = grad
 
-    def forward(self, x, tab):
-        x = F.relu(self.bn1(self.conv1(x)))
-        #print("Size after conv1 and relu:", x.size())
-        x = self.pool(x)
-       # print("Size after pool1:", x.size())
-        x = F.relu(self.bn2(self.conv2(x)))
-        #print("Size after conv2 and relu:", x.size())
-        x = self.pool(x)
-        #print("Size after pool2:", x.size())
-        x = self.cbam(x)
-        #print("Size after CBAM:", x.size())
-        x = x.view(x.size(0), -1)
-        #print("Size before fc1:", x.size()) #[32, 100352]
-        x = F.relu(self.fc1(x))
-        #x = F.relu(self.fc2(x))
-        #x = self.fc3(x)
-        
-        tab = torch.cat((x,tab), dim=1)
+    def get_activation_gradients(self):
+        return self.gradients
 
-        tab = self.act(tab)
-        tab = self.linear2(tab)
-        tab = self.act(tab)
-        tab = self.linear3(tab)
-        tab = self.act(tab)
-        tab = self.linear4(tab)
-        tab = self.act(tab)
-        tab = self.linear5(tab)
-        tab = self.act(tab)
-
-        return self.linear6(tab)    
+    def get_activations(self):
+        return self.features
+    
 
 class ResNet50_w_metadata(nn.Module):
     def __init__(self):
@@ -322,7 +339,7 @@ class ResNet50_w_metadata(nn.Module):
         self.linear5 = nn.Linear(128,64)
         self.linear6 = nn.Linear(64,OUTPUTS_a)
 
-    def forward(self, x, tab):
+    def forward(self, x, tab, register_hook=False):
         x = self.input(x)
         x = self.features(x)
         x = torch.flatten(x, 1)
@@ -341,6 +358,15 @@ class ResNet50_w_metadata(nn.Module):
         tab = self.act(tab)
 
         return self.linear6(tab)
+    
+    def save_gradients(self, grad):
+        self.gradients = grad
+
+    def get_activation_gradients(self):
+        return self.gradients
+
+    def get_activations(self):
+        return self.features
 
 class GMLP(nn.Module):
     def __init__(self):
@@ -357,10 +383,19 @@ class GMLP(nn.Module):
 
         self.model.to_patch_embed[1] = nn.Linear(PATCH_SIZE*PATCH_SIZE*CHANNELS, 512, bias=True)
         
-    def forward(self, x, tab):
+    def forward(self, x, tab, register_hook=False):
         x = self.model(x)
         
         return x
+    
+    def save_gradients(self, grad):
+        self.gradients = grad
+
+    def get_activation_gradients(self):
+        return self.gradients
+
+    def get_activations(self):
+        return self.features
 
 class Dataset(data.Dataset):
     '''
@@ -486,15 +521,18 @@ def model_definition():
     # Define a Keras sequential model
     # Compile the model
 
-    #model = ResNet50_w_metadata()
-    model = AttentionCNN(num_classes=4)
-    #model = GMLP()
-    #model = MLP()
+    if MODEL_NAME == 'resnet50_model':
+        model = ResNet50_w_metadata()
+    elif MODEL_NAME == 'attentioncnn_model':
+        model = AttentionCNN()
+    elif MODEL_NAME == 'gmlp':
+        model = GMLP()
 
     model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    criterion = nn.CrossEntropyLoss()
+    #criterion = nn.CrossEntropyLoss()
+    criterion = FocalLoss(alpha=1, gamma=2)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=1, verbose=True)
 
@@ -510,6 +548,12 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
     cont = 0
     train_loss_item = list([])
     val_loss_item = list([])
+    
+    train_loss_list = []
+    val_loss_list = []
+    train_accuracies = []
+    val_accuracies = []
+
 
     pred_labels_per_hist = list([])
 
@@ -566,13 +610,16 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
 
                 pred_logits = np.vstack((pred_logits, output.detach().cpu().numpy()))
                 real_labels = np.vstack((real_labels, xtarget.cpu().numpy()))
-                
+    
+        train_loss_list.append(train_loss)
 
         pred_labels = pred_logits[1:]
         pred_labels = [np.argmax(a) for a in pred_labels]
         real_labels = real_labels[1:]
         real_labels = [np.argmax(a) for a in real_labels]
         
+        train_acc = accuracy_score(real_labels, pred_labels)
+        train_accuracies.append(train_acc)
 
         # Metric Evaluation
         train_metrics = metrics_func(list_of_metrics, list_of_agg, real_labels, pred_labels)
@@ -629,6 +676,8 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
                     pred_logits = np.vstack((pred_logits, output.detach().cpu().numpy()))
                     real_labels = np.vstack((real_labels, xtarget.cpu().numpy()))
 
+        val_loss_list.append(val_loss)
+
         # Update learning rate
         scheduler.step(val_loss)
 
@@ -636,6 +685,9 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
         pred_labels = [np.argmax(a) for a in pred_labels]
         real_labels = real_labels[1:]
         real_labels = [np.argmax(a) for a in real_labels]
+
+        val_acc = accuracy_score(real_labels, pred_labels)
+        val_accuracies.append(val_acc)
 
         val_metrics = metrics_func(list_of_metrics, list_of_agg, real_labels, pred_labels)
 
@@ -652,33 +704,38 @@ def train_and_val(train_ds, val_ds, list_of_metrics, list_of_agg, save_on):
 
         print(xstrres)
 
-        plt_confusion_matrix(real_labels, pred_labels)
+        #plt_confusion_matrix(real_labels, pred_labels)
 
         if met_val > met_val_best and SAVE_MODEL:
-        #if SAVE_MODEL:
 
-            torch.save(model.state_dict(), "best_model.pt")
-            #xdf_dset_results = xdf_dset_val.copy()
+            torch.save(model.state_dict(), f"{MODEL_NAME}.pt")
 
-            ## The following code creates a string to be saved as 1,2,3,3,
-            ## This code will be used to validate the model
-            #xfinal_pred_labels = []
-            #for i in range(len(pred_labels)):
-            #    joined_string = ",".join(str(int(e)) for e in pred_labels[i])
-            #    xfinal_pred_labels.append(joined_string)
-
-            #xdf_dset_results['results'] = xfinal_pred_labels
-
-            #xdf_dset_results.to_csv('model_results.csv', index = False)
             print("The model has been saved!")
             met_val_best = met_val
+    
+     # Plotting
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(train_loss_list, label='Train Loss', linewidth=3.0)
+    plt.plot(val_loss_list, label='Validation Loss', linewidth=3.0)
+    plt.title('Loss over epochs')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(train_accuracies, label='Train Accuracy', linewidth=3.0)
+    plt.plot(val_accuracies, label='Validation Accuracy', linewidth=3.0)
+    plt.title('Accuracy over epochs')
+    plt.legend()
+    plt.savefig(f'{MODEL_NAME}_accuracy_loss.png')
+    
+    plt.show()
 
     
 def test_model(test_ds, list_of_metrics, list_of_agg):
         
     model, optimizer, criterion, scheduler = model_definition()
 
-    model.load_state_dict(torch.load('best_model.pt', map_location=device))
+    model.load_state_dict(torch.load(f'{MODEL_NAME}.pt', map_location=device))
 
     cont = 0
     test_loss_item = list([])
@@ -891,8 +948,81 @@ def plt_confusion_matrix(targets, preds):
     sns.heatmap(cm, annot=True, fmt='d')
     plt.xlabel('Predicted')
     plt.ylabel('True')
+    plt.savefig(f'{MODEL_NAME}_cm.png')
 
     return plt.show()
+
+def visualize_grad_cam(activations, gradients, original_image, alpha=0.4):
+    # Select the activations and gradients for the first image
+    activations = activations[0]  # Shape becomes [16, 64, 64]
+    gradients = gradients[0]      # Shape becomes [16, 64, 64]
+
+    # Compute pooled gradients
+    pooled_gradients = torch.mean(gradients, dim=[1, 2])
+    for i in range(activations.shape[0]):
+        activations[i, :, :] *= pooled_gradients[i]
+
+    # Generate heatmap
+    heatmap = torch.mean(activations, dim=0).squeeze()  # Remove the channel dimension
+    heatmap = np.maximum(heatmap.detach().cpu(), 0)
+    heatmap /= torch.max(heatmap)
+
+    # Reshape the heatmap
+    heatmap = heatmap.unsqueeze(0).unsqueeze(0)  # Add N and C dimensions
+
+    # Resize heatmap to match the original image size
+    heatmap = F.interpolate(heatmap, size=(original_image.shape[1], original_image.shape[2]), mode='bilinear', align_corners=False)
+    heatmap = heatmap.squeeze().numpy()
+
+    # Overlay the heatmap
+    # Overlay the heatmap
+    plt.imshow(original_image.permute(1, 2, 0).cpu().detach().numpy())  # Detach the tensor before conversion
+    plt.imshow(heatmap, cmap='jet', alpha=alpha)
+    plt.axis('off')
+    plt.show()
+
+def xai(model_type):
+
+    if model_type == 'attentioncnn_model':
+        model = AttentionCNN()
+        model_file = 'attentioncnn_model.pt'
+    elif model_type == 'gmlp_model':
+        model = GMLP()
+        model_file = 'gmlp_model.pt'
+    elif model_type == 'resnet50_model':
+        model = ResNet50_w_metadata()
+        model_file = 'resnet50_model.pt'
+
+    # Load the saved weights into the model
+    model.load_state_dict(torch.load(model_file))
+    model.to(device)  # Make sure to send the model to the appropriate device
+
+    # Set the model to evaluation mode
+    model.eval()  # This ensures the model is in evaluation mode
+
+    # Load and preprocess the test image
+    test_image, xtabular, xtarget = next(iter(train_ds))
+    test_image.requires_grad_()  # Ensure gradients will be tracked for this image
+    test_image, xtabular, xtarget = test_image.to(device), xtabular.to(device), xtarget.to(device)
+
+    # Forward pass with hook registration on the test image
+    output = model(test_image, xtabular, register_hook=True)  # Gradients need to be tracked here, so don't use torch.no_grad()
+
+    # Compute gradients and activations
+    target_class = output.argmax(dim=1)
+    model.zero_grad()
+    output[:, target_class].sum().backward()  # Backward pass should be outside of torch.no_grad()
+    gradients = model.get_activation_gradients()
+    activations = model.get_activations()
+
+    # Clear any previous plots to ensure a clean state
+    plt.clf()  # Clear the current figure
+    plt.close()  # Close the figure window
+
+    # Visualize Grad-CAM
+    plt.figure()  # Start a new figure
+    visualize_grad_cam(activations, gradients, test_image[0])
+
 
 if __name__ == '__main__':
 
@@ -902,6 +1032,9 @@ if __name__ == '__main__':
     #make_data_file()
 
     FILE_NAME = 'data.csv'
+    MODEL_NAME = 'resnet50_model'
+    #MODEL_NAME = 'attentioncnn_model'
+    #MODEL_NAME = 'gmlp'
     
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME)
@@ -935,3 +1068,6 @@ if __name__ == '__main__':
 
     # Test on test split
     test_model(test_ds,list_of_metrics, list_of_agg)
+
+    # Explanable AI
+    xai(MODEL_NAME) # Pass the model name
