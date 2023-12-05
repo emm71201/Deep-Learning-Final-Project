@@ -33,7 +33,7 @@ np.random.seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-n_epoch = 1
+n_epoch = 10
 BATCH_SIZE = 32
 LR =  0.001
 
@@ -137,32 +137,6 @@ class FocalLoss(nn.Module):
             return torch.sum(F_loss)
         else:
             return F_loss
-
-class MLP(nn.Module):
-    def __init__(self):
-        super(MLP, self).__init__()
-
-        self.act = torch.relu
-
-        self.linear2 = nn.Linear(14,256)
-        self.linear3 = nn.Linear(256,256)
-        self.linear4 = nn.Linear(256,128)
-        self.linear5 = nn.Linear(128,64)
-        self.linear6 = nn.Linear(64,OUTPUTS_a)
-
-    def forward(self, x, tab):
-
-        tab = self.linear2(tab)
-        tab = self.act(tab)
-        tab = self.linear3(tab)
-        tab = self.act(tab)
-        tab = self.linear4(tab)
-        tab = self.act(tab)
-        tab = self.linear5(tab)
-        tab = self.act(tab)
-
-        return self.linear6(tab)
-
 
 class ChannelAttention(nn.Module):
     def __init__(self, in_planes, ratio=16):
@@ -984,12 +958,7 @@ def visualize_grad_cam(activations, gradients, original_image, alpha=0.4):
 
 def xai():
 
-    if MODEL_NAME == 'attentioncnn_model':
-        model = AttentionCNN()
-    if MODEL_NAME == 'resnet50_model':
-        model = ResNet50_w_metadata()
-    if MODEL_NAME == 'gmlp':
-        model = GMLP()
+    model = AttentionCNN()
     
     # Load the saved weights into the model
     model.load_state_dict(torch.load(f'{MODEL_NAME}.pt'))
@@ -1001,7 +970,6 @@ def xai():
     # Load and preprocess the test image
     test_image, xtabular, xtarget = next(iter(train_ds))
     test_image.requires_grad_()  # Ensure gradients will be tracked for this image
-    #xtabular.requires_grad_()
     test_image = test_image.to(device)
 
     # Forward pass with hook registration on the test image
@@ -1032,9 +1000,9 @@ if __name__ == '__main__':
 
     FILE_NAME = 'data.csv'
 
-    #MODEL_NAME = 'resnet50_model'
+    MODEL_NAME = 'resnet50_model'
     #MODEL_NAME = 'attentioncnn_model'
-    MODEL_NAME = 'gmlp'
+    #MODEL_NAME = 'gmlp'
     
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME)
@@ -1067,7 +1035,8 @@ if __name__ == '__main__':
     test_ds = read_data('test')
 
     # Test on test split
-    #test_model(test_ds,list_of_metrics, list_of_agg)
+    test_model(test_ds,list_of_metrics, list_of_agg)
 
     # Explanable AI
-    xai() 
+    if MODEL_NAME == 'attentioncnn_model':
+        xai() 
