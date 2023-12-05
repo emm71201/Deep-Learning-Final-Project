@@ -11,3 +11,15 @@ for training a deep neural network. The Figure below shows the first five images
 
 ![Brain images!](/Figures/examples_images.jpg "Brain Images")
 
+## Exploratory Data Analysis
+### Images Distribution 
+<img alt="Image1 description" src="/Figures/bar_plot.png" title="Images distribution" />
+
+### Distribution by Gender
+<img alt="Image2 description" src="/Figures/gender_dist.png" title="Distribution by Gender" />
+
+### Distribution by Education
+<img alt="Image3 description" src="/Figures/educ_dist.png" title="Distribution by Education" />
+
+### Distribution by Age
+<img alt="Image4 description" src="/Figures/age_dist.png" title="Distribution by Age" />
