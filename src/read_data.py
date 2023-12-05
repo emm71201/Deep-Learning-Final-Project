@@ -16,8 +16,8 @@ def create_subtitle(fig: plt.Figure, grid: SubplotSpec, title: str):
     row.set_frame_on(False)
     row.axis('off')
 
-PATH = "../oasis/"
-nrows, ncols = 4,5
+PATH = "../data/Data/"
+nrows, ncols = 3,5
 fig, axes = plt.subplots(nrows,ncols, figsize=(10,7))
 # clear subplots
 for i in range(nrows):
@@ -26,8 +26,9 @@ for i in range(nrows):
 
 dementia = []
 row = 0
-for folder in os.listdir(PATH):
-    dementia.append(folder)
+folders = ['Non_Demented', 'Very_mild_Dementia', 'Mild_Dementia']
+dementia = ['Non_Demented', 'Very_mild_Dementia', 'Mild_Dementia']
+for folder in folders:
     col = 0
     for file in os.listdir(PATH + folder)[:ncols]:
 
@@ -40,35 +41,35 @@ grid = plt.GridSpec(nrows, ncols)
 for i in range(len(dementia)):
     row_title = dementia[i]
     create_subtitle(fig, grid[i, ::], row_title)
-plt.savefig("Figures/examples_images.jpg", bbox_inches='tight')
+#plt.savefig("../Figures/examples_images.jpg", bbox_inches='tight')
 plt.show()
 
 # Exploring the dataset
-df = {}
-for folder in os.listdir(PATH):
-    tmp = []
-    for file in os.listdir(PATH + folder)[:]:
-        tmp.append(file)
-    df[folder] = tmp
-counts = []
-for key, item in df.items():
-    print(f"{key} : {len(item)}")
-    counts.append(len(item))
-
-fig, ax = plt.subplots()
+# df = {}
+# for folder in os.listdir(PATH):
+#     tmp = []
+#     for file in os.listdir(PATH + folder)[:]:
+#         tmp.append(file)
+#     df[folder] = tmp
+# counts = []
+# for key, item in df.items():
+#     print(f"{key} : {len(item)}")
+#     counts.append(len(item))
+#
+# fig, ax = plt.subplots()
 
 # fruits = ['apple', 'blueberry', 'cherry', 'orange']
 # counts = [40, 100, 30, 55]
-bar_labels = ['red', 'blue', '_red', 'orange']
-bar_colors = ['tab:red', 'tab:blue', 'tab:red', 'tab:orange']
-
-ax.bar(dementia, counts, color=bar_colors)
-
-ax.set_ylabel('Counts')
+# bar_labels = ['red', 'blue', '_red', 'orange']
+# bar_colors = ['tab:red', 'tab:blue', 'tab:red', 'tab:orange']
+#
+# ax.bar(dementia, counts, color=bar_colors)
+#
+# ax.set_ylabel('Counts')
 #ax.set_title('Fruit supply by kind and color')
 #ax.legend(title='Fruit color')
 
-plt.show()
+# plt.show()
 
 
 
