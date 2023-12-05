@@ -33,8 +33,8 @@ np.random.seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-n_epoch = 10
-BATCH_SIZE = 32
+n_epoch = 20
+BATCH_SIZE = 64
 LR =  0.001
 
 ## Image processing
@@ -306,41 +306,46 @@ class ResNet50_w_metadata(nn.Module):
         self.classifier = nn.Linear(model.fc.in_features, OUTPUTS_a)
 
         self.act = torch.relu
+        self.dropout = nn.Dropout(0.2)
         
-        self.linear2 = nn.Linear(2062,1000) # Input shape = 2048 + metadata len
+        self.linear2 = nn.Linear(2051,1000) # Input shape = 2048 + metadata len
+        self.bn2 = nn.BatchNorm1d(num_features=1000)
         self.linear3 = nn.Linear(1000,256)
+        self.bn3 = nn.BatchNorm1d(num_features=256)
         self.linear4 = nn.Linear(256,128)
+        self.bn4 = nn.BatchNorm1d(num_features=128)
         self.linear5 = nn.Linear(128,64)
+        self.bn5 = nn.BatchNorm1d(num_features=64)
         self.linear6 = nn.Linear(64,OUTPUTS_a)
 
-    def forward(self, x, tab, register_hook=False):
+    def forward(self, x, tab):
         x = self.input(x)
         x = self.features(x)
         x = torch.flatten(x, 1)
         #x = self.classifier(x)
 
         tab = torch.cat((x,tab), dim=1)
-
+        
         tab = self.act(tab)
         tab = self.linear2(tab)
+        tab = self.dropout(tab)
+        tab = self.bn2(tab)
         tab = self.act(tab)
         tab = self.linear3(tab)
+        tab = self.dropout(tab)
+        tab = self.bn3(tab)
         tab = self.act(tab)
         tab = self.linear4(tab)
+        tab = self.dropout(tab)
+        tab = self.bn4(tab)
         tab = self.act(tab)
         tab = self.linear5(tab)
+        tab = self.dropout(tab)
+        tab = self.bn5(tab)
         tab = self.act(tab)
+        tab = self.linear6(tab)
 
-        return self.linear6(tab)
-    
-    def save_gradients(self, grad):
-        self.gradients = grad
-
-    def get_activation_gradients(self):
-        return self.gradients
-
-    def get_activations(self):
-        return self.features
+        return tab
 
 class GMLP(nn.Module):
     def __init__(self):
@@ -420,15 +425,16 @@ class Dataset(data.Dataset):
         # Add normalization step
         img = cv2.imread(file, cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (IMAGE_SIZE, IMAGE_SIZE))
+        #img = cv2.normalize(img, None, 0, 1.0,cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         image = torch.FloatTensor(img)
         image = torch.reshape(image, (CHANNELS, IMAGE_SIZE, IMAGE_SIZE))
 
         # Load tabular data  #https://rosenfelder.ai/multi-input-neural-network-pytorch/
         #metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age','eTIV','nWBV', 'ASF']
-        #metadata_features = ['eTIV','nWBV', 'ASF']
+        metadata_features = ['eTIV','nWBV', 'ASF']
         
         # Demographic features only
-        metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age']
+        #metadata_features = ['M','F','Educ1','Educ2','Educ3','Educ4','Educ5','SES0','SES1', 'SES2', 'SES3', 'SES4', 'SES5', 'Age']
         
 
         if self.type_data == 'train':
@@ -504,7 +510,8 @@ def model_definition():
 
     model = model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    optimizer = torch.optim.SGD(model.parameters(), lr=LR, momentum=0.9)
     #criterion = nn.CrossEntropyLoss()
     criterion = FocalLoss(alpha=1, gamma=2)
 
@@ -874,14 +881,13 @@ def process_target():
 
 def preprocess_data(data):
 
-    df = data[['id','target','M/F','Age','Educ','SES','eTIV','nWBV','ASF']]
+    df = data[['id','target_class','M/F','Age','Educ','SES','eTIV','nWBV','ASF']]
 
     convert_dict = {'M/F': 'category',
                     'Educ': 'category',
                     'SES': 'category'}
  
     df = df.astype(convert_dict) 
-    df = df[df['Age']>=60].reset_index(drop=True) # Restrict age to 60 and older
 
     enc = OneHotEncoder() 
     df1 = df.join(pd.DataFrame(enc.fit_transform(df[['M/F']]).toarray(),columns=('M','F'))).drop(columns=('M/F'))
@@ -990,7 +996,6 @@ def xai():
     plt.figure()  # Start a new figure
     visualize_grad_cam(activations, gradients, test_image[0])
 
-
 if __name__ == '__main__':
 
     # Set up environment
@@ -1007,16 +1012,25 @@ if __name__ == '__main__':
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME)
 
-    xdf_data = preprocess_data(xdf_data_og)
+    xdf_data = xdf_data_og[xdf_data_og['Age']>=60].reset_index(drop=True) # Restrict age to 60 and older
+    
+    xdf_data = xdf_data[xdf_data['target']!=2].reset_index(drop=True)
 
-    ## Process Classes    
     class_names = process_target()
 
-    ## Processing Train dataset
+    patient_df = xdf_data[['patient','target']].drop_duplicates()
 
-    xdf_dset, xdf_dset_val = train_test_split(xdf_data, test_size=0.30, random_state=SEED)
+    train, val = train_test_split(patient_df, test_size=0.30, random_state=490)
 
-    xdf_dset_test, xdf_dset_val = train_test_split(xdf_data, test_size=0.50, random_state=SEED)
+    val, test = train_test_split(val, test_size=0.50, random_state=490)
+
+    xdf_dset = xdf_data[xdf_data['patient'].isin(train['patient'])]
+    xdf_dset_val = xdf_data[xdf_data['patient'].isin(val['patient'])]
+    xdf_dset_test = xdf_data[xdf_data['patient'].isin(test['patient'])]
+
+    xdf_dset = preprocess_data(xdf_dset)
+    xdf_dset_val = preprocess_data(xdf_dset_val)
+    xdf_dset_test = preprocess_data(xdf_dset_test)
 
     xdf_dset, xdf_dset_val, xdf_dset_test = transform_data(xdf_dset, xdf_dset_val, xdf_dset_test)
     
