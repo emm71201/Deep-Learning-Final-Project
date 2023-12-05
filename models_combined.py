@@ -33,7 +33,7 @@ np.random.seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-n_epoch = 2
+n_epoch = 1
 BATCH_SIZE = 32
 LR =  0.001
 
@@ -521,11 +521,11 @@ def model_definition():
     # Define a Keras sequential model
     # Compile the model
 
+    if MODEL_NAME == 'attentioncnn_model':
+        model = AttentionCNN()
     if MODEL_NAME == 'resnet50_model':
         model = ResNet50_w_metadata()
-    elif MODEL_NAME == 'attentioncnn_model':
-        model = AttentionCNN()
-    elif MODEL_NAME == 'gmlp':
+    if MODEL_NAME == 'gmlp':
         model = GMLP()
 
     model = model.to(device)
@@ -535,8 +535,6 @@ def model_definition():
     criterion = FocalLoss(alpha=1, gamma=2)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=1, verbose=True)
-
-    #save_model(model) # Generate summary file
 
     return model, optimizer, criterion, scheduler
 
@@ -979,22 +977,22 @@ def visualize_grad_cam(activations, gradients, original_image, alpha=0.4):
     plt.imshow(original_image.permute(1, 2, 0).cpu().detach().numpy())  # Detach the tensor before conversion
     plt.imshow(heatmap, cmap='jet', alpha=alpha)
     plt.axis('off')
+
+    plt.savefig(f'{MODEL_NAME}_xai.png')
+
     plt.show()
 
-def xai(model_type):
+def xai():
 
-    if model_type == 'attentioncnn_model':
+    if MODEL_NAME == 'attentioncnn_model':
         model = AttentionCNN()
-        model_file = 'attentioncnn_model.pt'
-    elif model_type == 'gmlp_model':
-        model = GMLP()
-        model_file = 'gmlp_model.pt'
-    elif model_type == 'resnet50_model':
+    if MODEL_NAME == 'resnet50_model':
         model = ResNet50_w_metadata()
-        model_file = 'resnet50_model.pt'
-
+    if MODEL_NAME == 'gmlp':
+        model = GMLP()
+    
     # Load the saved weights into the model
-    model.load_state_dict(torch.load(model_file))
+    model.load_state_dict(torch.load(f'{MODEL_NAME}.pt'))
     model.to(device)  # Make sure to send the model to the appropriate device
 
     # Set the model to evaluation mode
@@ -1003,7 +1001,8 @@ def xai(model_type):
     # Load and preprocess the test image
     test_image, xtabular, xtarget = next(iter(train_ds))
     test_image.requires_grad_()  # Ensure gradients will be tracked for this image
-    test_image, xtabular, xtarget = test_image.to(device), xtabular.to(device), xtarget.to(device)
+    #xtabular.requires_grad_()
+    test_image = test_image.to(device)
 
     # Forward pass with hook registration on the test image
     output = model(test_image, xtabular, register_hook=True)  # Gradients need to be tracked here, so don't use torch.no_grad()
@@ -1032,9 +1031,10 @@ if __name__ == '__main__':
     #make_data_file()
 
     FILE_NAME = 'data.csv'
-    MODEL_NAME = 'resnet50_model'
+
+    #MODEL_NAME = 'resnet50_model'
     #MODEL_NAME = 'attentioncnn_model'
-    #MODEL_NAME = 'gmlp'
+    MODEL_NAME = 'gmlp'
     
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME)
@@ -1067,7 +1067,7 @@ if __name__ == '__main__':
     test_ds = read_data('test')
 
     # Test on test split
-    test_model(test_ds,list_of_metrics, list_of_agg)
+    #test_model(test_ds,list_of_metrics, list_of_agg)
 
     # Explanable AI
-    xai(MODEL_NAME) # Pass the model name
+    xai() 
