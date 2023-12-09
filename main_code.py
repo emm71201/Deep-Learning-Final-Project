@@ -506,16 +506,18 @@ def model_definition():
 
     if MODEL_NAME == 'attentioncnn_model':
         model = AttentionCNN()
+        optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     if MODEL_NAME == 'resnet50_model':
         model = ResNet50_w_metadata()
+        optimizer = torch.optim.SGD(model.parameters(), lr=LR, momentum=0.9)
     if MODEL_NAME == 'gmlp':
         model = GMLP()
+        optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     model = model.to(device)
 
-    #optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    optimizer = torch.optim.SGD(model.parameters(), lr=LR, momentum=0.9)
     #criterion = nn.CrossEntropyLoss()
+
     criterion = FocalLoss(alpha=1, gamma=2)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=1, verbose=True)
@@ -1009,14 +1011,20 @@ if __name__ == '__main__':
     FILE_NAME = 'data.csv'
 
     MODEL_NAME = 'gmlp'
+    lr = LR
+    BATCH_SIZE = BATCH_SIZE
+
     try:
         model_name = sys.argv[1]
         if model_name in ['gmlp', 'attentioncnn_model', 'resnet50_model']:
             MODEL_NAME = model_name
+        lr = float(sys.argv[2])
+        BATCH_SIZE = int(sys.argv[3])
+
     except:
         pass
 
-    print(f"\nMODEL: {MODEL_NAME}\n")
+    print(f"\nMODEL: {MODEL_NAME}\tBATCH_SIZE: {BATCH_SIZE}\tLEARNING RATE: {lr}")
     
     # Reading and filtering Excel file
     xdf_data_og = pd.read_csv(FILE_NAME)
