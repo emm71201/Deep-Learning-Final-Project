@@ -2,13 +2,25 @@ import os
 import subprocess
 import glob
 import pandas as pd
+# try:
+#     import gdown
+# except:
+#     subprocess.run(['pip', 'install', 'gdown'])
+#     import gdown
 
 def download_dataset():
     # Ensure the .kaggle directory exists
     os.makedirs(os.path.join(os.path.expanduser('~'), '.kaggle'), exist_ok=True)
 
     # Download the dataset from Kaggle
-    subprocess.run(['kaggle', 'datasets', 'download', '-d', 'ninadaithal/imagesoasis', '--unzip', '-p', 'data/'])
+    try:
+        subprocess.run(['kaggle', 'datasets', 'download', '-d', 'ninadaithal/imagesoasis', '--unzip', '-p', 'data/'])
+    except:
+        print("Failed to download from Kaggle")
+        print("This can be fixed by setting up the kaggle.json authentication in .kaggle")
+        print("Please, contact the author if the issue persists")
+        print("Exiting...")
+        return
 
     # Update subfolder names
     name_dict = {'Non Demented': 'Non_Demented',
