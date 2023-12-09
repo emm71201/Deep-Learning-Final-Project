@@ -26,6 +26,7 @@ try:
     from g_mlp_pytorch import gMLPVision
 except:
     subprocess.run(['pip', 'install', 'g-mlp-pytorch'])
+    from g_mlp_pytorch import gMLPVision
 
 SEED = 123
 torch.manual_seed(SEED)
