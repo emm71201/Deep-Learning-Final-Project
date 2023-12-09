@@ -39,7 +39,7 @@ def show_image(classname='random', filename='random'):
     fig, ax = plt.subplots()
     try:
         image = mpimg.imread(image_path)
-        ax.imshow(image)
+        ax.imshow(image/255.0, cmap='gray')
         ax.set_title(f"{classname.replace('_', ' ')}")
         ax.axis('off')
     except:
@@ -150,8 +150,13 @@ st.markdown("- GMLP achieves similar performance but with modest number of param
 
 st.image("Figures/gmlp_arc.png", caption="GMLP architecture from arXiv:2105.08050")
 
-st.image("Figures/gmlp_accuracy_loss.png", caption="GMLP accuracy and loss")
+# st.image("Figures/gmlp_accuracy_loss.png", caption="GMLP accuracy and loss")
 st.image("Figures/gmlp_cm.png", caption="GMLP confusion matrix")
+
+st.markdown("**Accuracy** = 0.51")
+st.markdown("**F1**       = 0.37")
+st.markdown("**COH**      = 0.06")
+
 def run_demo1():
     image, labels = mydemos.get_demo("gmlp_demo")
     st.session_state['image'] = image
@@ -182,8 +187,12 @@ st.markdown("- Images were trained on the ResNet50 architecture")
 st.markdown("- Output of convolution blocks concatenated with tabular metadata")
 st.markdown("- Combined features trained with MLP to generated classification output")
 
-st.image("Figures/resnet50_model_accuracy_loss.png", caption="Accuracy and loss for ResNet 50 with metadata")
+# st.image("Figures/resnet50_model_accuracy_loss.png", caption="Accuracy and loss for ResNet 50 with metadata")
 st.image("Figures/resnet50_model_cm.png", caption="Confusion matrix for ResNet 50 with metadata")
+
+st.markdown("**Accuracy** = 0.58")
+st.markdown("**F1**       = 0.35")
+st.markdown("**COH**      = 0.09")
 
 def run_demo2():
     image, labels = mydemos.get_demo("gmlp_demo")
@@ -212,12 +221,8 @@ st.markdown("**CNN with CBAM Overview**")
 st.markdown("- Enhances feature focus and model interpretability in image analysis tasks. CBAM's Role in CNNs")
 st.markdown("- Channel Attention: Prioritizes 'what' features to focus on by weighting channels.")
 st.markdown("- Spatial Attention: Identifies 'where' to focus, emphasizing critical regions.")
-st.markdown("**Grad-CAM for Visualization**")
-st.markdown("- Produces heatmaps that highlight influential areas affecting the model's decisions. Facilitates understanding of the model's internal reasoning process. Importance for Explainable AI (XAI)")
-st.markdown("- Offers transparency in model predictions, crucial for trust in sensitive applications like healthcare.")
-st.markdown("- Assists in model validation and iterative refinement by aligning predictions with domain expertise.")
 
-st.image("Figures/attentioncnn_model_accuracy_loss.png", caption="Accuracy and loss for CNN with Attention Model")
+# st.image("Figures/attentioncnn_model_accuracy_loss.png", caption="Accuracy and loss for CNN with Attention Model")
 st.image("Figures/attentioncnn_model_cm.png", caption="Confusion matrix for CNN with Attention")
 
 def run_demo3():
@@ -241,6 +246,15 @@ if 'image3' in st.session_state:
         st.text(f"Correct Label: {st.session_state['labels3'][0]}")
         st.text(f"Model   Label: {st.session_state['labels3'][1]}")
 
+st.markdown("**Accuracy** = 0.50")
+st.markdown("**F1**       = 0.39")
+st.markdown("**COH**        = 0.11")
+
+st.markdown("**Grad-CAM for Visualization**")
+st.markdown("- Produces heatmaps that highlight influential areas affecting the model's decisions. Facilitates understanding of the model's internal reasoning process. Importance for Explainable AI (XAI)")
+st.markdown("- Offers transparency in model predictions, crucial for trust in sensitive applications like healthcare.")
+st.markdown("- Assists in model validation and iterative refinement by aligning predictions with domain expertise.")
+
 cbam = st.button("Show XAI", type = "primary")
 if cbam:
     st.image("Figures/attentioncnn_model_xai.png", caption="Explanability of CNN with Attention")
@@ -256,14 +270,14 @@ st.markdown("* For example, the confusion matrices show that the model does not 
 st.markdown("**Implement 3D models**")
 st.markdown("* The brain images are 3-Dimensional")
 st.markdown("* We have used each slice of the brain as an individual image, ignoring 3D spatial informations.")
-st.markdown("* The spatial relations between different pixels may be necessary in diagnosing AD.")
+st.markdown("* The spatial relations between different pixels may be necessary in predicting AD.")
 st.markdown("* We may consider models such as:")
 st.markdown("   1. 3D Convolutional Neural Networks")
 st.markdown("   2. 3D Reccurent Visual Attention Networks (RVN)")
 st.markdown("* The state of the art is ~90% achieved by an RVN and a Transformer model in arXiv:2011.14139")
 
 st.markdown("**In conclusion**")
-st.markdown("We have used GMLP, ResNet Model with metadata and CNN with Attention to diagnose Alzheimer's disease")
+st.markdown("We have used GMLP, ResNet Model with metadata and CNN with Attention to predict the severity of AD")
 st.markdown("We established modest results ~0.50% accuracy but promising with some improvements.")
 st.markdown("One improvement is to generate data of under-represented classes artificially.")
 st.markdown("Another possible improvement is to use 3D models to also account for the spatial propoerties of the brain more accurately.")
