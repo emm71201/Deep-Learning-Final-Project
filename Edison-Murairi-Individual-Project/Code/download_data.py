@@ -72,5 +72,4 @@ def make_data_file():
 if __name__ == "__main__":
 
     download_dataset()
-    download_metadata()
-    make_data_file()
+
